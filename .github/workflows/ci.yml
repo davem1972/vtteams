@@ -1,0 +1,89 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# The jobs only read the repository; nothing here needs a token that can write.
+permissions:
+  contents: read
+
+# A new push to a pull request replaces that pull request's older run; a push to main is never cancelled.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  # Warnings are enforced here rather than with `#![deny(warnings)]` in the source, so a new compiler release
+  # cannot break downstream builds of the library.
+  RUSTFLAGS: -Dwarnings
+  RUSTDOCFLAGS: -Dwarnings
+
+jobs:
+  check:
+    name: build and test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    # A cold build compiles the C grammars as well; this is several times what a cached run takes.
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        # The library has cfg(unix) and cfg(windows) paths (credential files, browser discovery, and a different set of
+        # browser locations on macOS); build and test all three.
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Installs the toolchain pinned in rust-toolchain.toml (with rustfmt and clippy).
+      - run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Format
+        run: cargo fmt --all --check
+      # `--locked`: a Cargo.lock that does not match the manifests is an error, not a silent re-resolution.
+      - name: Clippy
+        run: cargo clippy --locked --workspace --all-targets
+      - name: Tests (unit, integration, doc)
+        run: cargo test --locked --workspace
+      - name: Docs
+        run: cargo doc --locked --workspace --no-deps
+
+  # The library's backends are Cargo features; each combination must build, pass clippy and pass its tests on its own.
+  # (The documentation examples use both backends, so they run in the `check` job with the default features.)
+  features:
+    name: library features (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: none
+            flags: ""
+          - name: graph
+            flags: "--features graph"
+          - name: teams
+            flags: "--features teams"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Clippy
+        run: cargo clippy --locked -p teams-client --all-targets --no-default-features ${{ matrix.flags }}
+      - name: Tests
+        run: cargo test --locked -p teams-client --lib --tests --no-default-features ${{ matrix.flags }}
+      - name: Docs
+        run: cargo doc --locked -p teams-client --no-deps --no-default-features ${{ matrix.flags }}
+
+  # Dependency policy (deny.toml): advisories, licences, sources and bans. cargo-deny's own action runs it in a
+  # container (which installs the toolchain rust-toolchain.toml names), so nothing is compiled here; Dependabot moves
+  # the pinned action, and with it the cargo-deny version, forward.
+  policy:
+    name: dependency policy
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: EmbarkStudios/cargo-deny-action@81891abc19297b21343b15ef67dc61e4aea74fda # v2.1.4
+        with:
+          arguments: --locked

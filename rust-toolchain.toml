@@ -1,0 +1,5 @@
+[toolchain]
+# A new project tracks the latest stable Rust. Bump this together with `rust-version` in Cargo.toml.
+channel = "1.100.0"
+profile = "minimal"
+components = ["rustfmt", "clippy"]

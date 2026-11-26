@@ -1,0 +1,17 @@
+target/
+.env
+.env.*
+
+# Local sign-in state and diagnostics, in case a settings directory is ever pointed inside the repo.
+token.json
+teams-session.json
+browser-profile/
+/images/
+*.tmp
+*.log
+
+# `--record-shapes DIR` output is masked, but it is still a recording of a live tenant's traffic: never commit it.
+/shapes*/
+
+# A coding assistant's local state.
+.claude/

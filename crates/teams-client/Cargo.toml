@@ -1,0 +1,55 @@
+[package]
+name = "teams-client"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Blocking client for Microsoft Teams chats: Microsoft Graph or the Teams web API, behind one Backend trait"
+readme = "README.md"
+keywords = ["teams", "microsoft-graph", "chat"]
+categories = ["api-bindings"]
+publish = false
+
+[features]
+default = ["graph", "teams"]
+# Microsoft Graph: device-code sign-in and the documented chats API. `base64` is for `shares.rs`, which both
+# backends use to resolve a SharePoint/OneDrive attachment to a direct download.
+graph = ["dep:ureq", "dep:url", "dep:base64"]
+# The Teams web API, signed in through the user's own browser (adds the DevTools driver). The one `wss://` dial
+# (the Trouter push connection, `teams/trouter.rs`) wraps its own TLS by hand with `rustls` + `rustls-platform-verifier`
+# (below `[dependencies]`), the same stack `ureq`'s own `rustls` feature already pulls in for every HTTPS call, so
+# there is one TLS implementation in the build, not two. `tungstenite` stays built with only its `handshake` feature
+# plus just enough of its own `rustls-tls-native-roots` feature to compile in the `Connector::Rustls` variant (the
+# same minimal build `teams/browser.rs`'s loopback CDP connection uses otherwise) — its own default root store is
+# never reached, since `dial` always hands it a ready-made, platform-verifier-backed `ClientConfig` instead.
+teams = ["dep:ureq", "dep:url", "dep:tungstenite", "dep:base64", "dep:rustls", "dep:rustls-platform-verifier"]
+
+[dependencies]
+base64 = { version = "0.23", optional = true }
+chrono.workspace = true
+image.workspace = true
+log.workspace = true
+rustls = { version = "0.23", default-features = false, features = ["std", "ring", "tls12"], optional = true }
+rustls-platform-verifier = { version = "0.7", optional = true }
+serde.workspace = true
+serde_json.workspace = true
+thiserror = "2.0.21"
+tungstenite = { version = "0.30", default-features = false, features = ["handshake", "rustls-tls-native-roots"], optional = true }
+# `rustls-no-provider` + `_ring` + `platform-verifier` (rather than the `rustls` shorthand feature, which also pulls
+# in a bundled Mozilla root list via `rustls-webpki-roots` that `RootCerts::PlatformVerifier` below makes unused):
+# verified live, 2026-11-09, that `rustls-platform-verifier` gives equal-or-better trust decisions than `native-tls`
+# did on every OS (it delegates to the real OS certificate validator — Windows' chain validation, which honours the
+# Disallowed Certificates store; macOS `Security.framework`, which honours explicit per-certificate distrust — rather
+# than just harvesting root certs the way plain `rustls-native-certs`/bundled `webpki-roots` would), while removing
+# the OpenSSL build dependency `native-tls` needed on Linux and fitting `#![forbid(unsafe_code)]` far better than a
+# C library does.
+ureq = { version = "3.5.0", default-features = false, features = ["rustls-no-provider", "_ring", "platform-verifier", "json", "gzip"], optional = true }
+url = { workspace = true, optional = true }
+
+[dev-dependencies]
+# Compresses the oversized answers that the download limits are tested against.
+flate2 = "1"
+proptest = "1"
+
+[lints]
+workspace = true

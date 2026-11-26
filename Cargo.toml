@@ -1,0 +1,116 @@
+[workspace]
+members = ["crates/teams-client"]
+# Plain `cargo test` / `cargo clippy` / `cargo doc` cover everything, not just the root package.
+default-members = [".", "crates/teams-client"]
+resolver = "3"
+
+[workspace.package]
+edition = "2024"
+# The toolchain is pinned to the latest stable in rust-toolchain.toml; keep the two in step.
+rust-version = "1.100"
+license = "MIT"
+
+# Versions and features shared by both crates are declared once.
+[workspace.dependencies]
+chrono = "0.4.45"
+image = { version = "0.25.10", default-features = false, features = ["jpeg", "png", "gif", "webp"] }
+log = "0.4.34"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+url = "2.5.8"
+
+[workspace.lints.rust]
+# Neither crate has any `unsafe`; keep it that way unless a reviewer signs off on a specific block.
+unsafe_code = "forbid"
+rust_2018_idioms = { level = "warn", priority = -1 }
+missing_debug_implementations = "warn"
+
+[workspace.lints.clippy]
+dbg_macro = "warn"
+todo = "warn"
+unimplemented = "warn"
+mem_forget = "warn"
+# Remote data must never be able to panic the process; tests may unwrap (see clippy.toml).
+unwrap_used = "warn"
+
+[package]
+name = "vtteams"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "A rich terminal UI for Microsoft Teams chats"
+readme = "README.md"
+keywords = ["teams", "tui", "terminal", "chat"]
+categories = ["command-line-utilities"]
+publish = false
+
+[dependencies]
+teams-client = { path = "crates/teams-client" }
+
+# Text-only clipboard: the default `image-data` feature pulls in image and platform bindings we do not use.
+arboard = { version = "3", default-features = false, features = ["wayland-data-control"] }
+chrono.workspace = true
+# Sealing the stored sign-in and the start-up cache (src/vault.rs). XChaCha20-Poly1305 with a random 192-bit nonce for
+# each write; `zeroize` wipes the key when it is dropped. No default features: nothing else of the crate is used.
+chacha20poly1305 = { version = "0.11", default-features = false, features = ["alloc", "getrandom", "zeroize"] }
+htmd = "0.6.1"
+image.workspace = true
+# The operating system's credential store holds the one key that seals everything else (src/vault.rs). `keyring-core`
+# is the interface; each platform's store is its own crate, so a build links only its own (below).
+keyring-core = "1"
+log.workspace = true
+pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }
+ratatui = "0.30.2"
+serde.workspace = true
+serde_json.workspace = true
+syntect = { version = "5.2", default-features = false, features = ["default-syntaxes", "default-themes", "regex-fancy"] }
+termimad = "0.35.5"
+# Settings are only read, never written, so the writer half is left out.
+toml = { version = "1.1.8", default-features = false, features = ["parse", "serde"] }
+unicode-segmentation = "1.13.3"
+unicode-width = "0.2"
+url.workspace = true
+webbrowser = "1.2.5"
+zeroize = "1.9"
+
+# The tree-sitter based ObjectScript highlighter, pinned to one tagged release.
+render-ansi = { git = "https://github.com/hkimura-intersys/syntax-color-objectscript", tag = "v0.12.0" }
+highlight-spans = { git = "https://github.com/hkimura-intersys/syntax-color-objectscript", tag = "v0.12.0" }
+theme-engine = { git = "https://github.com/hkimura-intersys/syntax-color-objectscript", tag = "v0.12.0" }
+
+# Reading the terminal's answers to the questions asked once at start-up (src/gfx/probe.rs) needs the terminal's own
+# settings (a read that gives up after a tenth of a second), which this crate gives in safe Rust. crossterm already
+# brings it into every Unix build; no more of it is turned on here than it has.
+[target.'cfg(unix)'.dependencies]
+rustix = { version = "1", default-features = false, features = ["std", "termios"] }
+
+# One credential store for each platform, chosen at compile time so Linux CI links no Windows code and the reverse.
+# Windows Credential Manager (the `search` feature, which pulls in `regex`, is not needed).
+[target.'cfg(windows)'.dependencies]
+# The console's own idea of its font size, shown by `--terminal-report` (src/gfx/report.rs) for diagnosis only; already in the
+# build through crossterm.
+crossterm_winapi = "0.9"
+windows-native-keyring-store = { version = "1.1", default-features = false }
+
+# The macOS Keychain.
+[target.'cfg(target_os = "macos")'.dependencies]
+apple-native-keyring-store = { version = "1", features = ["keychain"] }
+
+# The Secret Service over D-Bus (GNOME Keyring, KWallet), in pure Rust: no libdbus or OpenSSL to build against.
+[target.'cfg(all(unix, not(any(target_os = "macos", target_os = "ios", target_os = "android"))))'.dependencies]
+zbus-secret-service-keyring-store = { version = "1", features = ["crypto-rust"] }
+
+[dev-dependencies]
+proptest = "1"
+
+[lints]
+workspace = true
+
+[profile.release]
+lto = "thin"
+
+# Debug builds stay quick to iterate on, but the heavy dependencies (syntect grammars, image resize,
+# glyph fitting, tree-sitter) run optimised; otherwise images and code blocks feel sluggish.
+[profile.dev.package."*"]
+opt-level = 3

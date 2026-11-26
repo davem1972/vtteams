@@ -1,0 +1,46 @@
+# Dependency policy, checked with `cargo deny check`.
+
+[graph]
+all-features = true
+
+[advisories]
+# Only the workspace's own direct dependencies are checked for being unmaintained; `cargo audit` lists the rest
+# (syntect's bundled-data reader, bincode 1.x, which never sees data from the network).
+unmaintained = "workspace"
+ignore = [
+    { id = "RUSTSEC-2026-0543", reason = "chrono is marked unmaintained with no fixed version and no safe upgrade: it is a direct dependency of both crates and carries every date and time in the model and the UI. Nothing in the advisory is a vulnerability, only the maintenance status. Revisit when moving to jiff or time is considered, or when chrono is maintained again." },
+]
+
+[licenses]
+allow = [
+    "0BSD",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-3-Clause",
+    "BSL-1.0",
+    "CDLA-Permissive-2.0",
+    # ring, rustls-webpki and untrusted, brought in by rustls + rustls-platform-verifier.
+    "ISC",
+    "MIT",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+    "Unlicense",
+    "WTFPL",
+    "Zlib",
+]
+confidence-threshold = 0.9
+
+[bans]
+multiple-versions = "warn"
+wildcards = "warn"
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+# The ObjectScript highlighter is a git dependency pinned to one tagged release in Cargo.toml (it carries the diff
+# grammar it uses within itself).
+allow-git = [
+    "https://github.com/hkimura-intersys/syntax-color-objectscript",
+]
